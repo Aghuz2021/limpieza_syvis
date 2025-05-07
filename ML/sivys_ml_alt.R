@@ -1,4 +1,3 @@
-
 library(httr)
 library(ows4R)
 library(svDialogs)
