@@ -64,12 +64,38 @@ file_nom <- paste0("insumo/", anio, "_", mes, "_ml.xlsx")
 archivo <- readxl::read_xlsx(file_nom) %>%
   mutate(mes = paste(anio, mes, sep = "-"))
 
+
+#Formatias columnas a numero entero redondeado.
+#archivo$TOTAL_AREA <- as.integer(round(archivo$TOTAL_AREA))
+#archivo$COVERED_AREA <- as.integer(round(archivo$COVERED_AREA))
+#archivo$BEDROOMS <- as.integer(round(archivo$BEDROOMS))
+#archivo$ITE_CURRENT_PRICE <- as.integer(round(archivo$ITE_CURRENT_PRICE))
+#archivo$PRECIO_LOCAL <- as.integer(round(archivo$PRECIO_LOCAL))
+#archivo$ROOMS <- as.integer(round(archivo$ROOMS))
+#archivo$HAS_LAUNDRY <- as.integer(round(archivo$HAS_LAUNDRY))
+#archivo$HAS_GYM <- as.integer(round(archivo$HAS_GYM))
+#archivo$HAS_MULTIPURPOSE_ROOM <- as.integer(round(archivo$HAS_MULTIPURPOSE_ROOM))
+#archivo$HAS_SWIMMING_POOL <- as.integer(round(archivo$HAS_SWIMMING_POOL))
+#archivo$HAS_GRILL <- as.integer(round(archivo$HAS_GRILL))
+#archivo$FULL_BATHROOMS <- as.integer (round(archivo$FULL_BATHROOMS))
+#archivo$PROPERTY_AGE <- as.integer(round(archivo$PROPERTY_AGE))
+
+
+
 archivo <- archivo %>%
   mutate(across(c(TOTAL_AREA, COVERED_AREA, BEDROOMS, ROOMS, HAS_LAUNDRY, 
                   HAS_GYM, HAS_MULTIPURPOSE_ROOM, HAS_PARTY_ROOM, 
                   HAS_SWIMMING_POOL, HAS_GRILL, FULL_BATHROOMS, PROPERTY_AGE), 
                 as.numeric))
 
+archivo <- archivo %>%
+  mutate(across(c(TOTAL_AREA, COVERED_AREA, BEDROOMS, ITE_CURRENT_PRICE, PRECIO_LOCAL, 
+                  ROOMS, HAS_LAUNDRY, HAS_GYM, HAS_MULTIPURPOSE_ROOM, 
+                  HAS_SWIMMING_POOL, HAS_GRILL, FULL_BATHROOMS, PROPERTY_AGE), 
+                ~ as.integer(round(as.numeric(.)))))
+
+
+glimpse(archivo)
 # revisa si nuestro archivo a limpiar no tiene id duplicados
 archivo_duplicados <- archivo[duplicated(archivo$`Item ID`), ]
 
@@ -136,31 +162,32 @@ archivo <- mutate(archivo,
 # invoco a las funiones para realizar los calculos necesarios
 # Función para calcular 'pesosm2tot'
 pesosm2tot_funct <- function(precio_pesos, TOTAL_AREA) {
-  round(precio_pesos / TOTAL_AREA, 2)
+  round(precio_pesos / TOTAL_AREA, 0)
 }
 
 # Función para calcular 'dolaresm2tot'
 dolaresm2tot_funct <- function(precio_dolares, TOTAL_AREA) {
-  round(precio_dolares / TOTAL_AREA, 2)
+  round(precio_dolares / TOTAL_AREA, 0)
 }
 
 # Función para calcular 'pesosm2_cub'
 pesosm2_cub_funct <- function(precio_pesos, COVERED_AREA) {
-  round(precio_pesos / COVERED_AREA, 2)
+  round(precio_pesos / COVERED_AREA, 0)
 }
 
 # Función para calcular 'dolaresm2_cub'
 dolaresm2_cub_funct <- function(precio_dolares, COVERED_AREA) {
-  round(precio_dolares / COVERED_AREA, 2)
+  round(precio_dolares / COVERED_AREA, 0)
 }
 archivo$TOTAL_AREA <- as.numeric(archivo$TOTAL_AREA)
 # calcula pesosm2tot, dolaresm2tot, pesosm2_cub, dolaresm2_cub esto pordria ser funciones.
+
 archivo <- archivo %>%
   mutate(
-    pesosm2tot = pesosm2tot_funct(precio_pesos, TOTAL_AREA),
-    dolaresm2tot = dolaresm2tot_funct(precio_dolares, TOTAL_AREA),
-    pesosm2_cub = pesosm2_cub_funct(precio_pesos, COVERED_AREA),
-    dolaresm2_cub = dolaresm2_cub_funct(precio_dolares, COVERED_AREA)
+    pesosm2tot = round(pesosm2tot_funct(precio_pesos, TOTAL_AREA), 0),
+    dolaresm2tot = round(dolaresm2tot_funct(precio_dolares, TOTAL_AREA), 0),
+    pesosm2_cub = round(pesosm2_cub_funct(precio_pesos, COVERED_AREA), 0),
+    dolaresm2_cub = round(dolaresm2_cub_funct(precio_dolares, COVERED_AREA), 0)
   ) %>%
   select(
     -MESLISTING, -ITE_ADD_STATE_NAME, -ITE_ADD_CITY_NAME,
@@ -172,12 +199,6 @@ archivo <- sf::st_join(archivo, ZDP_sivys, join = sf::st_within)
 archivo <- sf::st_join(archivo, zonas_sivys, join = sf::st_within)
 
 
-archivo <- archivo %>%
-  mutate(across(
-    c(ROOMS, BEDROOMS,HAS_LAUNDRY, HAS_GYM, HAS_MULTIPURPOSE_ROOM, HAS_PARTY_ROOM, 
-      HAS_SWIMMING_POOL, HAS_GRILL, PROPERTY_AGE, FULL_BATHROOMS),
-    ~ replace_na(as.numeric(.), NA)
-  ))
 
 archivo <- archivo %>%
   mutate(Ambientes = case_when(
@@ -300,13 +321,20 @@ archivo_limp_vent_sin_out_depto <- limp_vent_departamento %>%
 # unifica el archivo de Venta (casa y depto)
 archivo_limp_sin_out_completo_venta <- bind_rows(archivo_limp_vent_sin_out_casa, archivo_limp_vent_sin_out_depto)
 
+
+limp_vent_otros <- filter(archivo_limp, OPERATION == "Venta", PROPERTY_TYPE != "Casa", PROPERTY_TYPE != "Departamento")
+
+
+archivo_limp_sin_out_completo_venta <- bind_rows(archivo_limp_sin_out_completo_venta,limp_vent_otros )
 # creamos la variable que contiene los datos de alquiler y departamento.
-limp_alq_departamento <- filter(archivo_limp, OPERATION == "Alquiler", PROPERTY_TYPE == "Departamento")
+limp_alq_departamento <- filter(archivo_limp, OPERATION == "Alquiler")
 
 # unifica el archivo de Venta y alquiler.
 archivo_limp_sin_out_completo <- bind_rows(archivo_limp_sin_out_completo_venta, limp_alq_departamento)
 
+# unifica el archivo de completo de venta
 
+archivo_limp_sin_out_completo_venta <- bind_rows(archivo_limp_sin_out_completo_venta, limp_vent_otros)
 
 # Calcular diferencia de publicaciones eliminadas por tipo de propiedad
 diferencias_publicaciones3 <- data.frame(
