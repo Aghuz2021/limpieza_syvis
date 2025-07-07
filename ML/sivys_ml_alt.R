@@ -5,6 +5,7 @@ library(tidyverse)
 library(sp)
 library(nngeo)
 library(lwgeom)
+library(readxl)
 library(writexl)
 library(sf)
 library(stringr)
@@ -93,8 +94,9 @@ archivo <- archivo %>%
                   HAS_SWIMMING_POOL, HAS_GRILL, FULL_BATHROOMS, PROPERTY_AGE), 
                 ~ as.integer(round(as.numeric(.)))))
 
-
+#Permite ver las columnas y filas de la base de datos
 glimpse(archivo)
+
 # revisa si nuestro archivo a limpiar no tiene id duplicados
 archivo_duplicados <- archivo[duplicated(archivo$`Item ID`), ]
 
@@ -390,4 +392,68 @@ combinado <- rbind(archivo1, archivo2)
 
 write_csv(combinado,paste("C:/Users/Usuario/Documents/R/SIVYS/ML/Resultados2/combinado_general_todos_los_meses/combinado.csv"))
 
+#----------------------------------------------
 
+#Cargar el mes actual
+mes_actual <- read.csv("C:/Users/Usuario/Desktop/Backup Tierras cx/Escritorio/Lourdes/Limpieza Sivys/limpieza_syvis/ML/Resultados/ML_2024_07_venta.csv")
+
+#Sacamos la mediana de valor del mt2 de venta y por tipo de propiedad (RIPTE y SMVM)
+median_mt2 <- mes_actual %>%
+  filter(
+    OPERATION == "Venta",
+    PROPERTY_TYPE %in% c("Casa", "Departamento")
+  ) %>%
+  group_by(PROPERTY_TYPE) %>%
+  summarise(mediana_precio = median(dolaresm2tot, na.rm = TRUE)) 
+
+#Multiplicamos el resultado anterior por 45(departamentos) y 100(casas) (RIPTE y SMVM)
+median_mt2 <- median_mt2 %>%
+  mutate(por_cantidad_mt2 = case_when(
+    PROPERTY_TYPE == "Casa" ~ mediana_precio * 100,
+    PROPERTY_TYPE == "Departamento" ~ mediana_precio * 45
+  ))
+
+#Multiplicamos el valor del cot_dolar y se transforma en pesos (RIPTE y SMVM)
+median_mt2 <- median_mt2 %>%
+  mutate(por_cot_dolar = por_cantidad_mt2 * 1352)
+
+#Traemos los datos del RIPTE y SMVM
+archivo <- "C:/Users/Usuario/Desktop/Backup Tierras cx/Escritorio/Lourdes/Limpieza Sivys/limpieza_syvis/ML/insumo/ripte_smvm.xlsx"
+hojas <- c("RIPTE", "SMVM")
+
+resultado <- lapply(hojas, function(hoja) {
+  read_excel(archivo, sheet = hoja) %>%
+    filter(format(fecha, "%Y-%m") == "2024-07") %>%
+    mutate(origen = hoja)
+}) %>%
+  bind_rows()
+
+#Cantidad de RIPTE
+valor_coef <- resultado %>%
+  filter(
+    fecha == as.Date("2024-07-01"),
+    origen == "RIPTE") %>%
+  pull(precio)
+
+median_mt2 <- median_mt2 %>%
+  mutate(cantidad_RIPTE = round(por_cot_dolar/ valor_coef))
+
+#Cantidad de SMVM
+valor_coef <- resultado %>%
+  filter(
+    fecha == as.Date("2024-07-01"),
+    origen == "SMVM") %>%
+  pull(precio)
+
+median_mt2 <- median_mt2 %>%
+  mutate(cantidad_SMVM = round(por_cot_dolar/ valor_coef))
+
+median_mt2 <- median_mt2 %>%
+  mutate(fecha = "2024-07")
+
+#Cargo el archivo anterior, agrego los nuevos resultados y lo guardo
+anteriores <- read.csv("C:/Users/Usuario/Desktop/Backup Tierras cx/Escritorio/Lourdes/Limpieza Sivys/limpieza_syvis/ML/Resultados/ripte_smvm_venta.csv")
+
+nuevo <- bind_rows(anteriores, median_mt2)
+
+write.csv(nuevo, "C:/Users/Usuario/Desktop/Backup Tierras cx/Escritorio/Lourdes/Limpieza Sivys/limpieza_syvis/ML/Resultados/ripte_smvm_venta.csv", row.names = FALSE)
